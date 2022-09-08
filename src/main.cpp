@@ -1,49 +1,41 @@
 #include <Arduino.h>
 #include <ESP8266WiFi.h>
+#include <WiFiClient.h>
+#include <ESP8266WebServer.h>
 
+// config Rede
+const char *ssid = "PROF.RAFAEL"; // Roteador
+const char *password = "";
+IPAddress ip(192, 168, 1, 111);     // ip do dispositivo
+IPAddress gateway(192, 168, 1, 1);  // gateway
+IPAddress subnet(255, 255, 255, 0); // mascara
 
-const char* ssid     = "PROF.RAFAEL";
-const char* password = "";
-IPAddress ip(192,168,1,69); 
-IPAddress gateway(192,168,1,1); 
-IPAddress subnet(255,255,255,0);
+ESP8266WebServer server(80);
+String page;
 
+// porta digital
+const int LED = 5;
+const int sensor = 4;
+unsigned long evento = 0;
+int counter = 0;
+int statec = 0;
+String state;
 
+void setup()
+{
 
-WiFiServer server(80);
-
-
-String header;
-
-
-String output5State = "off";
-
-
-
-const int output5 = 5;
-
-
-unsigned long currentTime = millis();
-
-unsigned long previousTime = 0; 
-
-const long timeoutTime = 2000;
-
-void setup() {
   Serial.begin(9600);
-  
-  pinMode(output5, OUTPUT);
+  pinMode(sensor, INPUT_PULLUP);
+  pinMode(LED, OUTPUT);
 
- 
-  digitalWrite(output5, LOW);
- 
+  // habilitar porta
 
- 
   Serial.print("Connecting to ");
   Serial.println(ssid);
   WiFi.begin(ssid, password);
   WiFi.config(ip, gateway, subnet);
-  while (WiFi.status() != WL_CONNECTED) {
+  while (WiFi.status() != WL_CONNECTED)
+  {
     delay(500);
     Serial.print(".");
   }
@@ -53,89 +45,54 @@ void setup() {
   Serial.println("IP address: ");
   Serial.println(WiFi.localIP());
   server.begin();
+
+  server.on("/", []()
+            {
+     page = "<!DOCTYPE html> \
+             <html> \
+             <head> <meta http-equiv='refresh' content='0' </head> \
+             <body> \
+             <h1>THE CLAPPER</h1><h3>Status:</h3> <h4> "+String(state)+"</h4> \
+             </body>\
+             </html>";
+    server.send(200, "text/html", page); });
 }
 
-void loop(){
-  WiFiClient client = server.available();  
-  if (client) {                             
-    Serial.println("New Client.");        
-    String currentLine = "";                
-    currentTime = millis();
-    previousTime = currentTime;
-    while (client.connected() && currentTime - previousTime <= timeoutTime) {
-      currentTime = millis();         
-      if (client.available()) {             
-        char c = client.read();            
-        Serial.write(c);                    
-        header += c;
-        if (c == '\n') {                    
-          
-          if (currentLine.length() == 0) {
-           
-            client.println("HTTP/1.1 200 OK");
-            client.println("Content-type:text/html");
-            client.println("Connection: close");
-            client.println();
-            
-            
-            if (header.indexOf("GET /5/on") >= 0) {
-              Serial.println("GPIO 5 on");
-              output5State = "on";
-              digitalWrite(output5, HIGH);
-            } else if (header.indexOf("GET /5/off") >= 0) {
-              Serial.println("GPIO 5 off");
-              output5State = "off";
-              digitalWrite(output5, LOW);
-            }
-            
-            ///cor modificada
-        
-            client.println("<!DOCTYPE html><html>");
-            client.println("<head><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">");
-            client.println("<link rel=\"icon\" href=\"data:,\">");
-            
-            client.println("<style>html { font-family: Helvetica; display: inline-block; margin: 0px auto; text-align: center;}");
-            client.println(".button { background-color: #195B6A; border: none; color: white; padding: 16px 40px;");
-            client.println("text-decoration: none; font-size: 30px; margin: 2px; cursor: pointer;}");
-            client.println(".button2 {background-color: #000080;}</style></head>");
-            
-           ///Modificado o nome do servidor///
+void loop()
+{
 
-            client.println("<body><h1>###Anonimos que se preocupem#####</h1>");
-            client.println("<body><h2>iotgang</h2>");
-
-            
-
-            
-            
-          
-            client.println("<p>GPIO 5 - State " + output5State + "</p>");
-                  
-            if (output5State=="off") {
-              client.println("<p><a href=\"/5/on\"><button class=\"button\">ON</button></a></p>");
-            } else {
-              client.println("<p><a href=\"/5/off\"><button class=\"button button2\">OFF</button></a></p>");
-            } 
-               
-            client.println("</body></html>");
-            
-           
-            client.println();
-            
-            break;
-          } else { 
-            currentLine = "";
-          }
-        } else if (c != '\r') { 
-          currentLine += c;      
-        }
+  int output = digitalRead(sensor);
+  if (output == HIGH)
+  {
+    if (millis() - evento > 25)
+    {
+      Serial.println("Reconheci o som");
+      Serial.println(millis());
+      Serial.println(evento);
+      Serial.println(millis() - evento);
+      Serial.println(counter);
+      if ((counter & 2) == 0)
+      {
+        digitalWrite(LED, LOW);
+        counter++;
+        statec = 0;
+      }
+      else
+      {
+        digitalWrite(LED, HIGH);
+        counter = 1;
+        statec = 1;
+      }
+      if (statec == 0)
+      {
+        state = "Off";
+      }
+      else if (statec == 1)
+      {
+        state = "ON";
       }
     }
-   
-    header = "";
-   
-    client.stop();
-    Serial.println("Client disconnected.");
-    Serial.println("");
+    evento = millis();
   }
+  server.handleClient();
 }
